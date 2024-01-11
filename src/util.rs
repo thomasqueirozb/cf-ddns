@@ -57,6 +57,8 @@ impl EnsureSuccess for Response {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
 pub enum IP {
     V4,
     V6,

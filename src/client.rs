@@ -78,6 +78,7 @@ pub struct Client {
     pub config: Config,
     authed_client: reqwest::Client,
     zone_id_cache: HashMap<String, ZoneDetailsResult>,
+    ip_cache: [Option<String>; 2],
 }
 
 impl Client {
@@ -92,6 +93,19 @@ impl Client {
             config,
             authed_client,
             zone_id_cache: Default::default(),
+            ip_cache: Default::default(),
+        })
+    }
+
+    pub async fn get_ip(&mut self, version: IP) -> Result<String> {
+        let idx = version as usize;
+        Ok(match &self.ip_cache[idx] {
+            Some(s) => s.clone(),
+            None => {
+                let ip = get_ip(version).await?;
+                self.ip_cache[idx] = Some(ip.clone());
+                ip
+            }
         })
     }
 
@@ -195,7 +209,7 @@ impl Client {
             }
 
             if let Some(record) = dns_records.iter().find(|record| record.type_ == type_) {
-                let ip = get_ip(ip_version).await?.to_string(); // FIXME cache
+                let ip = self.get_ip(ip_version).await?;
                 let id = record.id.as_ref().unwrap();
                 let rttl = record.ttl.as_ref().and_then(Number::as_u64).unwrap_or(1);
 
@@ -232,7 +246,7 @@ impl Client {
                         "https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records"
                     ))
                     .json(&DNSRecordsResult {
-                        content: get_ip(ip_version).await?.to_string(), // FIXME cache
+                        content: self.get_ip(ip_version).await?,
                         name: fqdn.clone(),
                         id: None,
                         type_: type_.to_string(),
