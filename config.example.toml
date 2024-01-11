@@ -1,0 +1,22 @@
+# Either use api_token or account_email and api_key
+[cloudflare]
+api_token = "xxxxxxxxxxxxxxxxx"
+
+# account_email = "email@example.tld"
+# api_key = "xxxxxxxxxxxxxxxxx"
+
+[subdomains]
+zone_id = "xxxxxxxxxxxxxxxxx"
+ttl = 1 # Time To Live in seconds. Minimum 60, maximum 86400. 1 means auto.
+        # If unspecified, ttl of subdomain will be used. If none are specified 1 will be used
+
+A = true     # IPv4 record. Optional: defaults to true
+AAAA = false # IPv6 record. Optional: defaults to false
+
+# proxied = true # Optional: defaults to true
+
+# Any values added in subdomain.* will be prefered over the config for all subdomains.
+[subdomain."@"] # @ means the root domain (example.tld)
+# ttl = 120
+
+[subdomain.other] # other.example.tld

@@ -1,0 +1,13 @@
+[package]
+name = "cf-ddns"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.4.14", features = ["derive", "env"] }
+color-eyre = "0.6.2"
+reqwest = { version = "0.11", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+toml = "0.8.8"
