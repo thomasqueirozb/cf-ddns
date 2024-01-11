@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
-use color_eyre::eyre::{bail, ensure};
+use color_eyre::eyre::ensure;
 use color_eyre::Result;
+use log::{debug, info, warn};
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Number;
@@ -163,6 +164,7 @@ impl Client {
         subdomain: &str,
         config: &SubdomainsConfig,
     ) -> Result<()> {
+        debug!("[commit_record] subdomain: {subdomain}");
         let zone_id = config
             .zone_id
             .as_ref()
@@ -171,7 +173,7 @@ impl Client {
             .to_string();
         let zone_details = self.get_zone_details(&zone_id).await?;
         let base_domain_name = zone_details.name;
-        // println!("{:?}", base_domain_name);
+        debug!("Base domain name: {base_domain_name}");
 
         let name = subdomain.to_lowercase();
         let name = name.trim();
@@ -180,6 +182,7 @@ impl Client {
         } else {
             base_domain_name
         };
+        debug!("fqdn: {fqdn}");
 
         let a = config.a.or(self.config.subdomains_config.a).unwrap_or(true);
         let aaaa = config
@@ -188,7 +191,8 @@ impl Client {
             .unwrap_or(false);
 
         if (a, aaaa) == (false, false) {
-            bail!("A = false and AAAA = false for subdomain {name}") // FIXME: validate before so this is unreachable
+            warn!("A = false and AAAA = false for subdomain {name}");
+            return Ok(());
         }
 
         let dns_records = self.get_dns_records(&zone_id, &fqdn).await?;
@@ -214,15 +218,20 @@ impl Client {
                 let rttl = record.ttl.as_ref().and_then(Number::as_u64).unwrap_or(1);
 
                 if record.proxied == Some(proxied) && record.content == ip && rttl == (ttl as u64) {
-                    println!("Record {id} not modified");
+                    info!("{fqdn}: record {id} doesn't need to be modified");
                 } else {
+                    info!(
+                        "{fqdn}: patching {type_} record with id {id}. Old ip: {}",
+                        record.content
+                    );
+                    debug!("{fqdn}: old record: {record:?}");
                     let record = self
                         .authed_client
                         .patch(format!(
                             "https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records/{id}",
                         ))
                         .json(&DNSRecordsResult {
-                            content: ip,
+                            content: ip.clone(),
                             name: fqdn.clone(),
                             id: None,
                             proxied: Some(proxied),
@@ -238,8 +247,12 @@ impl Client {
                     record
                         .api
                         .ensure_success(format!("Failed to patch {type_} record for {fqdn}"))?;
+
+                    info!("{fqdn}: succesfully patched {type_} record with id {id}. New ip: {ip}");
+                    debug!("{fqdn}: new record: {:?}", record.result);
                 }
             } else {
+                info!("{fqdn}: {type_} record not found, creating it");
                 let record = self
                     .authed_client
                     .post(format!(
@@ -262,6 +275,12 @@ impl Client {
                 record
                     .api
                     .ensure_success(format!("Failed to create {type_} record for {fqdn}"))?;
+
+                info!(
+                    "{fqdn}: successfully created {type_} record. id: {}, ip: {}",
+                    record.result.id.unwrap(),
+                    record.result.content
+                );
             }
         }
 

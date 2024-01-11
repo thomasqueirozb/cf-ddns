@@ -1,5 +1,8 @@
+use std::process::ExitCode;
+
 use clap::Parser;
 use color_eyre::Result;
+use log::error;
 
 mod client;
 mod config;
@@ -9,18 +12,24 @@ use crate::client::*;
 use crate::config::*;
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<ExitCode> {
     color_eyre::install()?;
 
     let args = Args::parse();
 
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
     let config = Config::new(args)?;
     let mut client = Client::new(config)?;
 
+    let mut failed = false;
     // Cloning here is dumb but necessary to appease the borrow checker smh
     for (subdomain, config) in client.config.subdomains.clone().iter() {
-        client.commit_record(subdomain, config).await?;
+        if let Err(e) = client.commit_record(subdomain, config).await {
+            error!("Failed to commit record for subdomain {subdomain:?}: {e}");
+            failed = true;
+        }
     }
 
-    Ok(())
+    Ok((failed as u8).into())
 }
