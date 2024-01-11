@@ -46,6 +46,11 @@ pub struct Args {
     /// AAAA record (IPv6)
     #[arg(long)]
     pub aaaa: Option<bool>,
+
+    /// Specify one subdomain prefix to be used instead of the ones in the config file.
+    /// Useful for debugging or running without a config file altogether
+    #[arg(long)]
+    pub subdomain: Option<String>,
 }
 
 #[derive(Deserialize, Clone, Debug, Default)]
@@ -207,6 +212,12 @@ impl Config {
             }
         }
 
+        let subdomains = if let Some(name) = args.subdomain {
+            [(name, SubdomainsConfig::default())].into()
+        } else {
+            toml.subdomains
+        };
+
         Ok(Self {
             cloudflare: Cloudflare { auth },
             subdomains_config: SubdomainsConfig {
@@ -216,7 +227,7 @@ impl Config {
                 a: args.a.or(subdomains_config.a),
                 aaaa: args.aaaa.or(subdomains_config.aaaa),
             },
-            subdomains: toml.subdomains,
+            subdomains,
         })
     }
 }
