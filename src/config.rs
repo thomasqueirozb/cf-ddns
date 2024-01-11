@@ -34,6 +34,18 @@ pub struct Args {
     /// Zone Id
     #[arg(long, env = "CF_ZONE_ID")]
     pub zone_id: Option<String>,
+
+    /// Proxied
+    #[arg(long)]
+    pub proxied: Option<bool>,
+
+    /// A record (IPv4)
+    #[arg(long)]
+    pub a: Option<bool>,
+
+    /// AAAA record (IPv6)
+    #[arg(long)]
+    pub aaaa: Option<bool>,
 }
 
 #[derive(Deserialize, Clone, Debug, Default)]
@@ -200,9 +212,9 @@ impl Config {
             subdomains_config: SubdomainsConfig {
                 zone_id,
                 ttl: args.ttl.or(subdomains_config.ttl),
-                proxied: subdomains_config.proxied, // TODO add command-line flag
-                a: subdomains_config.a,             // TODO add command-line flag
-                aaaa: subdomains_config.aaaa,       // TODO add command-line flag
+                proxied: args.proxied.or(subdomains_config.proxied),
+                a: args.a.or(subdomains_config.a),
+                aaaa: args.aaaa.or(subdomains_config.aaaa),
             },
             subdomains: toml.subdomains,
         })
