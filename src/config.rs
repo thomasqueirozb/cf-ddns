@@ -63,7 +63,7 @@ pub struct TomlConfig {
     pub subdomains_config: SubdomainsConfig,
     #[serde(rename = "subdomain")]
     pub subdomains: HashMap<String, SubdomainsConfig>,
-    pub cloudflare: TomlCloudflare,
+    pub cloudflare: Option<TomlCloudflare>,
 }
 
 #[derive(Deserialize, Debug, Default)]
@@ -119,13 +119,13 @@ impl CloudflareAuth {
         args_api_token: Option<String>,
         args_api_key: Option<String>,
         args_account_email: Option<String>,
-        toml_cloudflare: TomlCloudflare,
+        toml_cloudflare: Option<TomlCloudflare>,
     ) -> Result<CloudflareAuth> {
         let TomlCloudflare {
             api_token: toml_api_token,
             api_key: toml_api_key,
             account_email: toml_account_email,
-        } = toml_cloudflare;
+        } = toml_cloudflare.unwrap_or_default();
 
         if let Some(api_token) = args_api_token.or(toml_api_token) {
             return Ok(CloudflareAuth::ApiToken(api_token));
