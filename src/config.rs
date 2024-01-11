@@ -32,7 +32,7 @@ pub struct Args {
     pub account_email: Option<String>,
 
     /// Zone Id
-    #[arg(long, env = "ZONE_ID")]
+    #[arg(long, env = "CF_ZONE_ID")]
     pub zone_id: Option<String>,
 }
 
