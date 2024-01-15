@@ -8,8 +8,23 @@ clap = { version = "4.4.14", features = ["derive", "env"] }
 color-eyre = "0.6.2"
 env_logger = "0.10.1"
 log = "0.4.20"
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.11", features = ["json"], default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 toml = "0.8.8"
+
+[features]
+default = ["default-tls"]
+
+default-tls = ["reqwest/default-tls"]
+native-tls = ["reqwest/native-tls"]
+rustls-tls = ["reqwest/rustls-tls"]
+
+[profile.release]
+strip = true
+lto = true
+
+[profile.release-tiny]
+inherits = "release"
+opt-level = "z"
