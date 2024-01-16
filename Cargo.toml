@@ -2,6 +2,12 @@
 name = "cf-ddns"
 version = "0.1.0"
 edition = "2021"
+description = "Cloudflare Dynamic DNS"
+repository = "https://github.com/thomasqueirozb/cf-ddns"
+readme = "README.md"
+categories = ["command-line-utilities"]
+keywords = ["ddns", "dns", "cloudflare"]
+license = "AGPL-3.0"
 
 [dependencies]
 clap = { version = "4.4.14", features = ["derive", "env"] }
@@ -28,3 +34,6 @@ lto = true
 [profile.release-tiny]
 inherits = "release"
 opt-level = "z"
+
+[lints.clippy]
+cargo = "deny"
