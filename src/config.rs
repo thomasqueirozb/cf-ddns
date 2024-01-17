@@ -1,9 +1,9 @@
+use cloudflare::framework::auth::Credentials;
 use color_eyre::eyre::bail;
 use std::{collections::HashMap, env, fs::File, io, path::PathBuf};
 
 use clap::Parser;
 use color_eyre::{eyre::WrapErr, Result};
-use reqwest::header::{HeaderMap, HeaderValue};
 use serde::Deserialize;
 
 /// Cloudflare DDNS updater
@@ -79,17 +79,8 @@ pub struct TomlCloudflare {
 }
 
 #[derive(Debug)]
-pub enum CloudflareAuth {
-    ApiToken(String),
-    KeyEmail {
-        api_key: String,
-        account_email: String,
-    },
-}
-
-#[derive(Debug)]
 pub struct Cloudflare {
-    pub auth: CloudflareAuth,
+    pub auth: Credentials,
 }
 
 pub fn get_toml_config_or_default(args: &Args) -> Result<TomlConfig> {
@@ -119,21 +110,31 @@ pub fn get_toml_config_or_default(args: &Args) -> Result<TomlConfig> {
     }
 }
 
-impl CloudflareAuth {
+pub trait NewCredentials {
     fn new(
         args_api_token: Option<String>,
         args_api_key: Option<String>,
         args_account_email: Option<String>,
         toml_cloudflare: Option<TomlCloudflare>,
-    ) -> Result<CloudflareAuth> {
+    ) -> Result<Self>
+    where
+        Self: Sized;
+}
+impl NewCredentials for Credentials {
+    fn new(
+        args_api_token: Option<String>,
+        args_api_key: Option<String>,
+        args_account_email: Option<String>,
+        toml_cloudflare: Option<TomlCloudflare>,
+    ) -> Result<Credentials> {
         let TomlCloudflare {
             api_token: toml_api_token,
             api_key: toml_api_key,
             account_email: toml_account_email,
         } = toml_cloudflare.unwrap_or_default();
 
-        if let Some(api_token) = args_api_token.or(toml_api_token) {
-            return Ok(CloudflareAuth::ApiToken(api_token));
+        if let Some(token) = args_api_token.or(toml_api_token) {
+            return Ok(Credentials::UserAuthToken { token });
         }
 
         let api_key = args_api_key.or(toml_api_key);
@@ -146,30 +147,9 @@ impl CloudflareAuth {
             bail!("Account email not specified when api key was");
         };
 
-        Ok(CloudflareAuth::KeyEmail {
-            api_key,
-            account_email,
-        })
-    }
-
-    pub fn headers(&self) -> Result<HeaderMap<HeaderValue>> {
-        Ok(match self {
-            CloudflareAuth::ApiToken(api_token) => {
-                let mut header_map = HeaderMap::with_capacity(1);
-                header_map.insert("Authorization", format!("Bearer {api_token}").parse()?);
-                header_map
-            }
-
-            CloudflareAuth::KeyEmail {
-                api_key,
-                account_email,
-            } => {
-                let mut header_map = HeaderMap::with_capacity(2);
-
-                header_map.insert("X-Auth-Key", api_key.parse()?);
-                header_map.insert("X-Auth-Email", account_email.parse()?);
-                header_map
-            }
+        Ok(Credentials::UserAuthKey {
+            email: account_email,
+            key: api_key,
         })
     }
 }
@@ -185,7 +165,7 @@ impl Config {
     pub fn new(args: Args) -> Result<Config> {
         let toml = get_toml_config_or_default(&args)?;
 
-        let auth = CloudflareAuth::new(
+        let auth = Credentials::new(
             args.api_token,
             args.api_key,
             args.account_email,

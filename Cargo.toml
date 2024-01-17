@@ -11,6 +11,7 @@ license = "AGPL-3.0"
 
 [dependencies]
 clap = { version = "4.4.14", features = ["derive", "env"] }
+cloudflare = "0.11.0"
 color-eyre = "0.6.2"
 env_logger = "0.10.1"
 log = "0.4.20"
@@ -23,9 +24,9 @@ toml = "0.8.8"
 [features]
 default = ["default-tls"]
 
-default-tls = ["reqwest/default-tls"]
-native-tls = ["reqwest/native-tls"]
-rustls-tls = ["reqwest/rustls-tls"]
+default-tls = ["cloudflare/default-tls", "reqwest/default-tls"]
+# native-tls = ["cloudflare/native-tls", "reqwest/native-tls"]
+rustls-tls = ["cloudflare/rustls-tls", "reqwest/rustls-tls"]
 
 [profile.release]
 strip = true

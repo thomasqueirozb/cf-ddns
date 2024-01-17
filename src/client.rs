@@ -1,94 +1,30 @@
 use std::collections::HashMap;
 
-use color_eyre::eyre::ensure;
+use cloudflare::endpoints::dns;
+use cloudflare::endpoints::zone;
+use cloudflare::framework::async_api::Client as CClient;
+use cloudflare::framework::Environment;
+use color_eyre::eyre::Context;
 use color_eyre::Result;
 use log::{debug, info, warn};
-use serde::Deserialize;
-use serde::Serialize;
-use serde_json::Number;
-use serde_json::Value;
 
 use crate::config::*;
 use crate::util::*;
 
-#[derive(Debug, Deserialize)]
-struct CloudflareApiResponse {
-    errors: Vec<Value>,
-    messages: Vec<Value>,
-    success: bool,
-}
-
-impl CloudflareApiResponse {
-    pub fn ensure_success(&self, custom_message: String) -> Result<()> {
-        ensure!(
-            self.success,
-            "{}\nMessages: {:?}\nErrors: {:?}",
-            custom_message,
-            self.messages,
-            self.errors
-        );
-        Ok(())
-    }
-}
-
-// https://developers.cloudflare.com/api/operations/zones-0-get
-#[derive(Debug, Deserialize)]
-struct ZoneDetails {
-    #[serde(flatten)]
-    api: CloudflareApiResponse,
-    result: ZoneDetailsResult,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-pub struct ZoneDetailsResult {
-    pub name: String,
-}
-
-// https://developers.cloudflare.com/api/operations/dns-records-for-a-zone-list-dns-records
-#[derive(Debug, Deserialize)]
-pub struct DNSRecords {
-    #[serde(flatten)]
-    api: CloudflareApiResponse,
-    result: Vec<DNSRecordsResult>,
-}
-
-#[allow(unused)] // TODO log the result
-#[derive(Debug, Deserialize)]
-pub struct DNSRecord {
-    #[serde(flatten)]
-    api: CloudflareApiResponse,
-    result: DNSRecordsResult,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct DNSRecordsResult {
-    content: String,
-    name: String,
-    id: Option<String>,
-    #[serde(rename = "type")]
-    type_: String,
-    proxied: Option<bool>,
-    ttl: Option<Number>,
-    // locked: bool, // TODO check this
-    // proxiable: bool, // TODO check this
-    // comment: Option<String>,
-    // tags: Option<Vec<String>>,
-}
-
 pub struct Client {
     pub config: Config,
-    authed_client: reqwest::Client,
-    zone_id_cache: HashMap<String, ZoneDetailsResult>,
+    authed_client: CClient,
+    zone_id_cache: HashMap<String, String>,
     ip_cache: [Option<String>; 2],
 }
 
 impl Client {
     pub fn new(config: Config) -> Result<Self> {
-        let default_headers = config.cloudflare.auth.headers()?;
-
-        let authed_client = reqwest::Client::builder()
-            .default_headers(default_headers)
-            .build()?;
+        let authed_client = CClient::new(
+            config.cloudflare.auth.clone(),
+            Default::default(),
+            Environment::Production,
+        )?;
 
         Ok(Client {
             config,
@@ -110,53 +46,44 @@ impl Client {
         })
     }
 
-    pub async fn get_zone_details(&mut self, zone_id: &String) -> Result<ZoneDetailsResult> {
+    pub async fn get_zone_details(&mut self, zone_id: &String) -> Result<String> {
         if let Some(zone_details) = self.zone_id_cache.get(zone_id.as_str()) {
             return Ok(zone_details.clone());
         };
 
         let zone_details = self
             .authed_client
-            .get(format!(
-                "https://api.cloudflare.com/client/v4/zones/{zone_id}"
-            ))
-            .send()
-            .await?
-            .ensure_status_code(200)?
-            .json::<ZoneDetails>()
-            .await?;
-
-        zone_details
-            .api
-            .ensure_success(format!("Failed to get zone details (zone: {zone_id})"))?;
+            .request(&zone::ZoneDetails {
+                identifier: &zone_id,
+            })
+            .await
+            .with_context(|| format!("Failed to get zone details (zone: {zone_id})"))?;
 
         self.zone_id_cache
-            .insert(zone_id.to_string(), zone_details.result.clone());
-        Ok(zone_details.result)
+            .insert(zone_id.to_string(), zone_details.result.name.clone());
+        Ok(zone_details.result.name)
     }
 
     pub async fn get_dns_records(
         &self,
         zone_id: &String,
         fqdn: &String,
-    ) -> Result<Vec<DNSRecordsResult>> {
-        let dns_records = self
+    ) -> Result<Vec<dns::DnsRecord>> {
+        let records = self
             .authed_client
-            .get(format!(
-                "https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records\
-                ?per_page=100&name={fqdn}",
-            ))
-            .send()
-            .await?
-            .ensure_status_code(200)?
-            .json::<DNSRecords>()
-            .await?;
-
-        dns_records.api.ensure_success(format!(
-            "Failed to get dns records (zone: {zone_id}, name: {fqdn})"
-        ))?;
-
-        Ok(dns_records.result)
+            .request(&dns::ListDnsRecords {
+                zone_identifier: &zone_id,
+                params: dns::ListDnsRecordsParams {
+                    per_page: Some(100),
+                    name: Some(fqdn.clone()),
+                    ..Default::default()
+                },
+            })
+            .await
+            .with_context(|| {
+                format!("Failed to get dns records (zone: {zone_id}, name: {fqdn})")
+            })?;
+        Ok(records.result)
     }
 
     pub async fn commit_record(
@@ -171,8 +98,7 @@ impl Client {
             .or(self.config.subdomains_config.zone_id.as_ref())
             .expect("zone_id is None even after checks")
             .to_string();
-        let zone_details = self.get_zone_details(&zone_id).await?;
-        let base_domain_name = zone_details.name;
+        let base_domain_name = self.get_zone_details(&zone_id).await?;
         debug!("Base domain name: {base_domain_name}");
 
         let name = subdomain.to_lowercase();
@@ -212,74 +138,93 @@ impl Client {
                 continue;
             }
 
-            if let Some(record) = dns_records.iter().find(|record| record.type_ == type_) {
+            if let Some((record, record_ip)) =
+                dns_records.iter().find_map(|record| match ip_version {
+                    IP::V4 => {
+                        if let dns::DnsContent::A { content } = record.content {
+                            Some((record, content.to_string()))
+                        } else {
+                            None
+                        }
+                    }
+                    IP::V6 => {
+                        if let dns::DnsContent::AAAA { content } = record.content {
+                            Some((record, content.to_string()))
+                        } else {
+                            None
+                        }
+                    }
+                })
+            {
                 let ip = self.get_ip(ip_version).await?;
-                let id = record.id.as_ref().unwrap();
-                let rttl = record.ttl.as_ref().and_then(Number::as_u64).unwrap_or(1);
 
-                if record.proxied == Some(proxied) && record.content == ip && rttl == (ttl as u64) {
+                let content = match ip_version {
+                    IP::V4 => dns::DnsContent::A {
+                        content: ip.parse().unwrap(),
+                    },
+                    IP::V6 => dns::DnsContent::AAAA {
+                        content: ip.parse().unwrap(),
+                    },
+                };
+                let id = &record.id;
+
+                if record.proxied == proxied && record_ip == ip && record.ttl == ttl {
                     info!("{fqdn}: record {id} doesn't need to be modified");
                 } else {
                     info!(
                         "{fqdn}: patching {type_} record with id {id}. Old ip: {}",
-                        record.content
+                        record_ip,
                     );
                     debug!("{fqdn}: old record: {record:?}");
                     let record = self
                         .authed_client
-                        .patch(format!(
-                            "https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records/{id}",
-                        ))
-                        .json(&DNSRecordsResult {
-                            content: ip.clone(),
-                            name: fqdn.clone(),
-                            id: None,
-                            proxied: Some(proxied),
-                            type_: type_.to_string(),
-                            ttl: Some(ttl.into()),
+                        .request(&dns::UpdateDnsRecord {
+                            identifier: &id,
+                            zone_identifier: &zone_id,
+                            params: dns::UpdateDnsRecordParams {
+                                ttl: Some(ttl),
+                                proxied: Some(proxied),
+                                name: &fqdn,
+                                content,
+                            },
                         })
-                        .send()
-                        .await?
-                        .ensure_status_code(200)?
-                        .json::<DNSRecord>()
-                        .await?;
-
-                    record
-                        .api
-                        .ensure_success(format!("Failed to patch {type_} record for {fqdn}"))?;
+                        .await
+                        .with_context(|| format!("Failed to update {type_} record for {fqdn}"))?;
 
                     info!("{fqdn}: succesfully patched {type_} record with id {id}. New ip: {ip}");
                     debug!("{fqdn}: new record: {:?}", record.result);
                 }
             } else {
                 info!("{fqdn}: {type_} record not found, creating it");
+
+                let ip = self.get_ip(ip_version).await?;
+                let content = match ip_version {
+                    IP::V4 => dns::DnsContent::A {
+                        content: ip.parse().unwrap(),
+                    },
+                    IP::V6 => dns::DnsContent::AAAA {
+                        content: ip.parse().unwrap(),
+                    },
+                };
+
                 let record = self
                     .authed_client
-                    .post(format!(
-                        "https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records"
-                    ))
-                    .json(&DNSRecordsResult {
-                        content: self.get_ip(ip_version).await?,
-                        name: fqdn.clone(),
-                        id: None,
-                        type_: type_.to_string(),
-                        proxied: Some(proxied),
-                        ttl: Some(ttl.into()),
+                    .request(&dns::CreateDnsRecord {
+                        zone_identifier: &zone_id,
+                        params: dns::CreateDnsRecordParams {
+                            content,
+                            name: &fqdn,
+                            proxied: Some(proxied),
+                            ttl: Some(ttl),
+                            priority: None,
+                        },
                     })
-                    .send()
-                    .await?
-                    .ensure_status_code(200)?
-                    .json::<DNSRecord>()
-                    .await?;
-
-                record
-                    .api
-                    .ensure_success(format!("Failed to create {type_} record for {fqdn}"))?;
+                    .await
+                    .with_context(|| format!("Failed to create {type_} record for {fqdn}"))?;
 
                 info!(
-                    "{fqdn}: successfully created {type_} record. id: {}, ip: {}",
-                    record.result.id.unwrap(),
-                    record.result.content
+                    "{fqdn}: successfully created {type_} record. id: {}, ip: {:?}",
+                    record.result.id, record.result.content
                 );
             }
         }
