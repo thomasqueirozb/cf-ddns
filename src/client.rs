@@ -46,15 +46,15 @@ impl Client {
         })
     }
 
-    pub async fn get_zone_details(&mut self, zone_id: &String) -> Result<String> {
-        if let Some(zone_details) = self.zone_id_cache.get(zone_id.as_str()) {
+    pub async fn get_zone_details(&mut self, zone_id: &str) -> Result<String> {
+        if let Some(zone_details) = self.zone_id_cache.get(zone_id) {
             return Ok(zone_details.clone());
         };
 
         let zone_details = self
             .authed_client
             .request(&zone::ZoneDetails {
-                identifier: &zone_id,
+                identifier: zone_id,
             })
             .await
             .with_context(|| format!("Failed to get zone details (zone: {zone_id})"))?;
@@ -64,18 +64,14 @@ impl Client {
         Ok(zone_details.result.name)
     }
 
-    pub async fn get_dns_records(
-        &self,
-        zone_id: &String,
-        fqdn: &String,
-    ) -> Result<Vec<dns::DnsRecord>> {
+    pub async fn get_dns_records(&self, zone_id: &str, fqdn: &str) -> Result<Vec<dns::DnsRecord>> {
         let records = self
             .authed_client
             .request(&dns::ListDnsRecords {
-                zone_identifier: &zone_id,
+                zone_identifier: zone_id,
                 params: dns::ListDnsRecordsParams {
                     per_page: Some(100),
-                    name: Some(fqdn.clone()),
+                    name: Some(fqdn.to_string()),
                     ..Default::default()
                 },
             })
@@ -179,7 +175,7 @@ impl Client {
                     let record = self
                         .authed_client
                         .request(&dns::UpdateDnsRecord {
-                            identifier: &id,
+                            identifier: id,
                             zone_identifier: &zone_id,
                             params: dns::UpdateDnsRecordParams {
                                 ttl: Some(ttl),
