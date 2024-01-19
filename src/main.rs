@@ -24,9 +24,9 @@ async fn main() -> Result<ExitCode> {
 
     let mut failed = false;
     // Cloning here is dumb but necessary to appease the borrow checker smh
-    for (subdomain, config) in client.config.subdomains.clone().iter() {
+    for (subdomain, config) in &client.config.subdomains.clone() {
         if let Err(e) = client.commit_record(subdomain, config).await {
-            error!("Failed to commit record for subdomain {subdomain:?}: {e}");
+            error!("Failed to commit record for subdomain {subdomain:?}: {e:?}");
             failed = true;
         }
     }
