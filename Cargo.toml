@@ -11,8 +11,8 @@ license = "AGPL-3.0"
 
 [dependencies]
 clap = { version = "4.4.14", features = ["derive", "env"] }
-# cloudflare = "0.11.0"
-cloudflare = { git = "https://github.com/thomasqueirozb/cloudflare-rs", branch = "owner-default-values" }
+# cloudflare = { version = "0.11.0", default-features = false }
+cloudflare = { git = "https://github.com/thomasqueirozb/cloudflare-rs", branch = "owner-default-values", default_features = false }
 color-eyre = "0.6.2"
 env_logger = "0.10.1"
 log = "0.4.20"

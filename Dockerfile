@@ -7,6 +7,6 @@ COPY . .
 RUN cargo build -q --profile release-tiny --no-default-features --features rustls-tls
 
 FROM alpine:latest
-COPY --from=build /usr/share/src/cf-ddns/target/release/cf-ddns /usr/local/bin/cf-ddns
+COPY --from=build /usr/share/src/cf-ddns/target/release-tiny/cf-ddns /usr/local/bin/cf-ddns
 
 CMD ["cf-ddns"]
