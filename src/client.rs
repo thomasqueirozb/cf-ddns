@@ -168,7 +168,7 @@ impl Client {
                     info!("{fqdn}: record {id} doesn't need to be modified");
                 } else {
                     info!(
-                        "{fqdn}: patching {type_} record with id {id}. Old ip: {}",
+                        "{fqdn}: updating {type_} record with id {id}. Old ip: {}",
                         record_ip,
                     );
                     debug!("{fqdn}: old record: {record:?}");
@@ -187,7 +187,7 @@ impl Client {
                         .await
                         .with_context(|| format!("Failed to update {type_} record for {fqdn}"))?;
 
-                    info!("{fqdn}: succesfully patched {type_} record with id {id}. New ip: {ip}");
+                    info!("{fqdn}: succesfully updated {type_} record with id {id}. New ip: {ip}");
                     debug!("{fqdn}: new record: {:?}", record.result);
                 }
             } else {
