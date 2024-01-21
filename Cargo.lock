@@ -235,7 +235,7 @@ checksum = "702fc72eb24e5a1e48ce58027a675bc24edd52096d5397d4aea7c6dd9eca0bd1"
 [[package]]
 name = "cloudflare"
 version = "0.11.0"
-source = "git+https://github.com/thomasqueirozb/cloudflare-rs?branch=owner-default-values#f3bffd3e926093ce42d2b97d31c16828c71dbe55"
+source = "git+https://github.com/thomasqueirozb/cloudflare-rs?branch=owner-default-values#30c623cb0d8c8e102c9ecbe0763b12edbceb80d6"
 dependencies = [
  "chrono",
  "http",
