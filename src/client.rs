@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use cloudflare::endpoints::dns;
 use cloudflare::endpoints::zone;
@@ -12,7 +13,7 @@ use crate::config::*;
 use crate::util::*;
 
 pub struct Client {
-    pub config: Config,
+    pub config: Rc<Config>,
     authed_client: CClient,
     zone_id_cache: HashMap<String, String>,
     ip_cache: [Option<String>; 2],
@@ -27,7 +28,7 @@ impl Client {
         )?;
 
         Ok(Client {
-            config,
+            config: Rc::new(config),
             authed_client,
             zone_id_cache: Default::default(),
             ip_cache: Default::default(),
